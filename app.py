@@ -97,6 +97,22 @@ def update_profile(profile_id):
 
     return jsonify({"message": "Profile updated"}), 200
 
+@app.route("/profiles/<int:profile_id>", methods=["DELETE"])
+def delete_profile(profile_id):
+    cn = pyodbc.connect(connection_string())
+    cur = cn.cursor()
+
+    cur.execute(
+        "EXEC CW1.sp_DeleteProfile @ProfileID=?",
+        profile_id
+    )
+    cn.commit()
+
+    cur.close()
+    cn.close()
+
+    return jsonify({"message": "Profile deleted"}), 200
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
