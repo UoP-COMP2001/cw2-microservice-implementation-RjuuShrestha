@@ -1,2 +1,45 @@
-[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/aomfCV89)
-[![Open in Visual Studio Code](https://classroom.github.com/assets/open-in-vscode-2e0aaae1b6195c2367325f4f02e2d04e9abb55f0b24a779b69b11b9e10269abc.svg)](https://classroom.github.com/online_ide?assignment_repo_id=22126173&assignment_repo_type=AssignmentRepo)
+# Profile Service – COMP2001 Coursework 2
+
+This repository contains a Python Flask microservice developed for COMP2001 Coursework 2.
+
+The microservice provides CRUD (Create, Read, Update, Delete) operations for managing user profiles and connects to a Microsoft SQL Server database hosted on the University of Plymouth infrastructure.
+
+---
+
+## Features
+- Create a new user profile
+- Retrieve all profiles
+- Update an existing profile
+- Delete a profile
+- Health check endpoint
+
+---
+
+## Technologies Used
+- Python 3
+- Flask
+- pyodbc
+- Microsoft SQL Server
+- Postman (API testing)
+
+---
+
+## Database
+The service connects to a dedicated Microsoft SQL Server database provided by the University of Plymouth.
+
+All database operations are handled using stored procedures created in Coursework 1.
+
+Database credentials are not included in this repository.
+
+---
+
+## Running the Service Locally
+
+### Prerequisites
+- Python 3 installed
+- FortiClient VPN connected
+- Access to the University SQL Server
+
+### Installation
+```bash
+pip install flask pyodbc
