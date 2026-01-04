@@ -1,11 +1,30 @@
 from flask import Flask, jsonify
 from flask import request
+import os
 import pyodbc
-from config import connection_string
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
+def connection_string():
+    server = os.environ.get("DB_SERVER")
+    database = os.environ.get("DB_NAME")
+    username = os.environ.get("DB_USER")
+    password = os.environ.get("DB_PASSWORD")
+
+    if not all([server, database, username, password]):
+        raise RuntimeError("Missing DB env vars: DB_SERVER, DB_NAME, DB_USER, DB_PASSWORD")
+
+    return (
+        "DRIVER={ODBC Driver 17 for SQL Server};"
+        f"SERVER={server},1433;"
+        f"DATABASE={database};"
+        f"UID={username};"
+        f"PWD={password};"
+        "Encrypt=yes;"
+        "TrustServerCertificate=yes;"
+    )
+    
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})

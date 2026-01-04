@@ -1,5 +1,5 @@
 import pyodbc
-from config import connection_string
+import os
 
 cn = pyodbc.connect(connection_string())
 cur = cn.cursor()

@@ -33,6 +33,17 @@ Database credentials are not included in this repository.
 
 ---
 
+## Configuration (Database Credentials)
+
+This service reads database connection details from environment variables:
+
+- DB_SERVER
+- DB_NAME
+- DB_USER
+- DB_PASSWORD
+
+---
+
 ## API Documentation
 
 The API is documented using OpenAPI.
@@ -40,6 +51,14 @@ The API is documented using OpenAPI.
 - Static specification provided in `openapi.yaml`
 
 ## Running the Service Locally
+
+### Windows PowerShell example
+```powershell
+$env:DB_SERVER="dist-6-505.uopnet.plymouth.ac.uk"
+$env:DB_NAME="COMP2001_AShrestha"
+$env:DB_USER="AShrestha"
+$env:DB_PASSWORD="OlnE671"
+python app.py
 
 ### Prerequisites
 - Python 3 installed
