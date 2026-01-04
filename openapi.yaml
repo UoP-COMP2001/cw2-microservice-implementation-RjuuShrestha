@@ -1,0 +1,93 @@
+openapi: 3.0.3
+info:
+  title: Profile Service API
+  description: Microservice for managing user profiles for CW2
+  version: "1.0.0"
+
+servers:
+  - url: http://localhost:8000
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service is running
+
+  /profiles:
+    get:
+      summary: Get all profiles
+      responses:
+        "200":
+          description: List of profiles
+
+    post:
+      summary: Create a new profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileCreate"
+      responses:
+        "201":
+          description: Profile created
+
+  /profiles/{id}:
+    put:
+      summary: Update a profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileUpdate"
+      responses:
+        "200":
+          description: Profile updated
+
+    delete:
+      summary: Delete a profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Profile deleted
+
+components:
+  schemas:
+    ProfileCreate:
+      type: object
+      required:
+        - Username
+        - Email
+        - Location
+        - PreferredActivity
+      properties:
+        Username:
+          type: string
+        Email:
+          type: string
+        Location:
+          type: string
+        PreferredActivity:
+          type: string
+
+    ProfileUpdate:
+      type: object
+      properties:
+        Location:
+          type: string
+        PreferredActivity:
+          type: string

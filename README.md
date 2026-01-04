@@ -33,6 +33,12 @@ Database credentials are not included in this repository.
 
 ---
 
+## API Documentation
+
+The API is documented using OpenAPI.
+- Swagger UI available when the service is running
+- Static specification provided in `openapi.yaml`
+
 ## Running the Service Locally
 
 ### Prerequisites
@@ -43,3 +49,5 @@ Database credentials are not included in this repository.
 ### Installation
 ```bash
 pip install flask pyodbc
+
+
