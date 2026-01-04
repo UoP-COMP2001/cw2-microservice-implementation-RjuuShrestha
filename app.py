@@ -187,39 +187,36 @@ def my_role():
 def create_user():
     """
     New user story: create profile with only a username.
+    - admin/staff: can create any user
+    - user: can only create their own profile
     """
     user, err = require_auth()
     if err:
         return err
-
-    deny = require_roles(user, ["admin", "staff"])
-    if deny:
-        return deny
-
 
     data = request.get_json(silent=True) or {}
     username = (data.get("Username") or "").strip()
     if not username:
         return jsonify({"error": "Missing field: Username"}), 400
 
-    # Standard users can only create their own profile
+    # Users can only create their own profile
     if user["role"] == "user" and username != user["username"]:
         return jsonify({"error": "Users can only create their own profile"}), 403
 
-    # Validate exists in Authenticator API
+    # Validate target exists in Authenticator API
     auth_target = authenticator_lookup(username)
     if not auth_target:
         return jsonify({"error": "Username not found in Authenticator API"}), 400
 
-    # Prevent duplicates
     cn = get_conn()
     cur = cn.cursor()
     try:
+        # Prevent duplicates
         cur.execute("SELECT 1 FROM CW2.Profile WHERE Username = ?;", username)
         if cur.fetchone():
             return jsonify({"error": "Profile already exists for this username"}), 409
 
-        # Username-only insert (requires nullable columns in DB)
+        # Username-only insert (other fields nullable)
         cur.execute("""
             INSERT INTO CW2.Profile (Username)
             OUTPUT INSERTED.ProfileID
@@ -235,6 +232,7 @@ def create_user():
             "ProfileID": new_id,
             "Username": username
         }), 201
+
     except pyodbc.Error:
         cn.rollback()
         return jsonify({"error": "Database error while creating user"}), 500

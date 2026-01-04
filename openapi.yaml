@@ -73,7 +73,8 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProfileCreate"
+              $ref: "#/components/schemas/UserCreate"
+
       responses:
         "201":
           description: User profile created
@@ -366,4 +367,14 @@ components:
           type: string
         ProfileID:
           type: integer
+        Username:
+          type: string
       required: [message, ProfileID]
+    
+    UserCreate:
+      type: object
+      required: [Username]
+      properties:
+        Username:
+          type: string
+
