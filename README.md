@@ -56,8 +56,8 @@ The API is documented using OpenAPI.
 ```powershell
 $env:DB_SERVER="dist-6-505.uopnet.plymouth.ac.uk"
 $env:DB_NAME="COMP2001_AShrestha"
-$env:DB_USER="AShrestha"
-$env:DB_PASSWORD="OlnE671"
+$env:DB_USER="YOUR_USERNAME"
+$env:DB_PASSWORD="YOUR_PASSWORD"
 python app.py
 
 ### Prerequisites

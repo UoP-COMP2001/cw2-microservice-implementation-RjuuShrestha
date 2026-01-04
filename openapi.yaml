@@ -1,28 +1,48 @@
 openapi: 3.0.3
 info:
   title: Profile Service API
-  description: Microservice for managing user profiles for CW2
+  description: Microservice for managing user profiles for COMP2001 CW2
   version: "1.0.0"
 
 servers:
   - url: http://localhost:8000
+    description: Local development
+
+tags:
+  - name: Health
+  - name: Profiles
 
 paths:
   /health:
     get:
+      tags: [Health]
       summary: Health check
       responses:
         "200":
           description: Service is running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
 
   /profiles:
     get:
-      summary: Get all profiles
+      tags: [Profiles]
+      summary: Get all profiles (with optional activity fields from the view)
       responses:
         "200":
           description: List of profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Profile"
 
     post:
+      tags: [Profiles]
       summary: Create a new profile
       requestBody:
         required: true
@@ -30,13 +50,56 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/ProfileCreate"
+            example:
+              Username: "Test Person"
+              Email: "testperson@plymouth.ac.uk"
+              Location: "Plymouth"
+              PreferredActivity: "Walking"
+              DateOfBirth: "2000-01-31"
       responses:
         "201":
           description: Profile created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileCreatedResponse"
+              example:
+                message: "Profile created"
+                ProfileID: 9
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /profiles/{id}:
+    get:
+      tags: [Profiles]
+      summary: Get a profile by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Profile found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
     put:
-      summary: Update a profile
+      tags: [Profiles]
+      summary: Update a profile (partial update supported)
       parameters:
         - name: id
           in: path
@@ -49,12 +112,34 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/ProfileUpdate"
+            example:
+              Location: "Bristol"
+              PreferredActivity: "Cycling"
       responses:
         "200":
           description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+              example:
+                message: "Profile updated"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
     delete:
-      summary: Delete a profile
+      tags: [Profiles]
+      summary: Delete a profile by ID
       parameters:
         - name: id
           in: path
@@ -63,10 +148,75 @@ paths:
             type: integer
       responses:
         "204":
-          description: Profile deleted
+          description: Profile deleted (no content)
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    Profile:
+      type: object
+      properties:
+        ProfileID:
+          type: integer
+          example: 1
+        Username:
+          type: string
+          example: "Grace Hopper"
+        Email:
+          type: string
+          format: email
+          example: "grace@plymouth.ac.uk"
+        Location:
+          type: string
+          example: "Exeter"
+        PreferredActivity:
+          type: string
+          example: "Running"
+
+        # Fields that may appear from the vw_ProfileSummary view (can be null)
+        ActivityDate:
+          type: string
+          nullable: true
+          example: "Sun, 05 Jan 2025 00:00:00 GMT"
+        ActivityType:
+          type: string
+          nullable: true
+          example: "Trail Walk"
+        Distance:
+          type: number
+          nullable: true
+          example: 5.2
+        Duration:
+          type: integer
+          nullable: true
+          example: 90
+
     ProfileCreate:
       type: object
       required:
@@ -74,15 +224,21 @@ components:
         - Email
         - Location
         - PreferredActivity
+        - DateOfBirth
       properties:
         Username:
           type: string
         Email:
           type: string
+          format: email
         Location:
           type: string
         PreferredActivity:
           type: string
+        DateOfBirth:
+          type: string
+          format: date
+          example: "2000-01-31"
 
     ProfileUpdate:
       type: object
@@ -91,3 +247,12 @@ components:
           type: string
         PreferredActivity:
           type: string
+
+    ProfileCreatedResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        ProfileID:
+          type: integer
+      required: [message, ProfileID]

@@ -1,8 +1,6 @@
-from flask import Flask, jsonify
-from flask import request
+from flask import Flask, jsonify, request
 import os
 import pyodbc
-from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
@@ -24,7 +22,7 @@ def connection_string():
         "Encrypt=yes;"
         "TrustServerCertificate=yes;"
     )
-    
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
@@ -130,7 +128,7 @@ def delete_profile(profile_id):
     cur.close()
     cn.close()
 
-    return jsonify({"message": "Profile deleted"}), 200
+    return jsonify({"message": "Profile deleted"}), 204
 
 
 if __name__ == "__main__":
