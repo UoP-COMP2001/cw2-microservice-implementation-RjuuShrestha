@@ -58,11 +58,11 @@ def get_profiles():
     cn = get_conn()
     cur = cn.cursor()
     try:
-        # CW2 guidance: DB operations implemented in Python (no stored procs/views)
+        # CW2: CRUD implemented in Python using pyodbc
         cur.execute("""
             SELECT TOP 50
                 ProfileID, Username, Email, Location, PreferredActivity, DateOfBirth
-            FROM CW1.Profile
+            FROM CW2.Profile
             ORDER BY ProfileID DESC;
         """)
         columns = [col[0] for col in cur.description]
@@ -82,7 +82,7 @@ def get_profile(profile_id: int):
         cur.execute("""
             SELECT
                 ProfileID, Username, Email, Location, PreferredActivity, DateOfBirth
-            FROM CW1.Profile
+            FROM CW2.Profile
             WHERE ProfileID = ?;
         """, profile_id)
 
@@ -129,7 +129,7 @@ def create_profile():
     try:
         # Insert directly (no stored procedure), return created ID
         cur.execute("""
-            INSERT INTO CW1.Profile (Username, Email, Location, PreferredActivity, DateOfBirth)
+            INSERT INTO CW2.Profile (Username, Email, Location, PreferredActivity, DateOfBirth)
             OUTPUT INSERTED.ProfileID
             VALUES (?, ?, ?, ?, ?);
         """, username, email, location, preferred_activity, date_of_birth)
@@ -181,7 +181,7 @@ def update_profile(profile_id: int):
 
         params.append(profile_id)
 
-        sql = f"UPDATE CW1.Profile SET {', '.join(fields)} WHERE ProfileID = ?;"
+        sql = f"UPDATE CW2.Profile SET {', '.join(fields)} WHERE ProfileID = ?;"
         cur.execute(sql, params)
 
         if cur.rowcount == 0:
@@ -203,7 +203,7 @@ def delete_profile(profile_id: int):
     cn = get_conn()
     cur = cn.cursor()
     try:
-        cur.execute("DELETE FROM CW1.Profile WHERE ProfileID = ?;", profile_id)
+        cur.execute("DELETE FROM CW2.Profile WHERE ProfileID = ?;", profile_id)
 
         if cur.rowcount == 0:
             cn.rollback()
