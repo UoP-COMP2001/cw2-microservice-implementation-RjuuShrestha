@@ -43,6 +43,7 @@ def get_conn():
 # Helpers
 # -----------------------------
 PROFILE_FIELDS = ["Username", "Email", "Location", "PreferredActivity", "DateOfBirth"]
+NEW_USER_FIELDS = ["Username"]
 
 def validate_date_iso(value: str) -> bool:
     try:
@@ -138,67 +139,58 @@ def my_role():
 @app.route("/users", methods=["POST"])
 def create_user():
     """
-    Creates a new user profile (full row) so it works with NOT NULL DB constraints.
+    New user story: create profile with only a username.
     """
     user, err = require_auth()
     if err:
         return err
 
+    deny = require_roles(user, ["admin", "staff"])
+    if deny:
+        return deny
+
+
     data = request.get_json(silent=True) or {}
-
-    missing = [k for k in PROFILE_FIELDS if k not in data]
-    if missing:
-        return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
-
-    username = data.get("Username")
+    username = (data.get("Username") or "").strip()
+    if not username:
+        return jsonify({"error": "Missing field: Username"}), 400
 
     # Standard users can only create their own profile
     if user["role"] == "user" and username != user["username"]:
         return jsonify({"error": "Users can only create their own profile"}), 403
 
-    # Validate against Authenticator API
+    # Validate exists in Authenticator API
     auth_target = authenticator_lookup(username)
     if not auth_target:
         return jsonify({"error": "Username not found in Authenticator API"}), 400
 
-    # Reuse same insert as /profiles
-    return create_profile_internal(data, message="User created")
-
-def create_profile_internal(data: dict, message: str):
-    username = data.get("Username")
-    email = data.get("Email")
-    location = data.get("Location")
-    preferred_activity = data.get("PreferredActivity")
-    date_of_birth = data.get("DateOfBirth")
-
-    if not isinstance(username, str) or not username.strip():
-        return jsonify({"error": "Username must be a non-empty string"}), 400
-    if not isinstance(email, str) or not email.strip():
-        return jsonify({"error": "Email must be a non-empty string"}), 400
-    if not isinstance(location, str) or not location.strip():
-        return jsonify({"error": "Location must be a non-empty string"}), 400
-    if not isinstance(preferred_activity, str) or not preferred_activity.strip():
-        return jsonify({"error": "PreferredActivity must be a non-empty string"}), 400
-    if not isinstance(date_of_birth, str) or not validate_date_iso(date_of_birth):
-        return jsonify({"error": "DateOfBirth must be in YYYY-MM-DD format"}), 400
-
+    # Prevent duplicates
     cn = get_conn()
     cur = cn.cursor()
     try:
+        cur.execute("SELECT 1 FROM CW2.Profile WHERE Username = ?;", username)
+        if cur.fetchone():
+            return jsonify({"error": "Profile already exists for this username"}), 409
+
+        # Username-only insert (requires nullable columns in DB)
         cur.execute("""
-            INSERT INTO CW2.Profile
-            (Username, Email, Location, PreferredActivity, DateOfBirth)
+            INSERT INTO CW2.Profile (Username)
             OUTPUT INSERTED.ProfileID
-            VALUES (?, ?, ?, ?, ?);
-        """, username, email, location, preferred_activity, date_of_birth)
+            VALUES (?);
+        """, username)
 
         row = cur.fetchone()
         new_id = int(row[0]) if row else None
         cn.commit()
-        return jsonify({"message": message, "ProfileID": new_id}), 201
+
+        return jsonify({
+            "message": "User created",
+            "ProfileID": new_id,
+            "Username": username
+        }), 201
     except pyodbc.Error:
         cn.rollback()
-        return jsonify({"error": "Database error while creating profile"}), 500
+        return jsonify({"error": "Database error while creating user"}), 500
     finally:
         cur.close()
         cn.close()
