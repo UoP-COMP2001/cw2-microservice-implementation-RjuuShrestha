@@ -2,17 +2,20 @@
 
 This repository contains a Python Flask microservice developed for COMP2001 Coursework 2.
 
-The microservice provides CRUD (Create, Read, Update, Delete) operations for managing user profiles and connects to a Microsoft SQL Server database hosted on the University of Plymouth infrastructure.
+The microservice provides CRUD operations for managing user profiles and connects to a Microsoft SQL Server database hosted on the University of Plymouth infrastructure.
 
 ---
 
 ## Features
-- Create a new user profile
-- Retrieve all profiles
-- Retrieve a single profile
-- Update an existing profile
-- Delete a profile
+- Create new users (validated via Authenticator API)
+- Create user profiles
+- Retrieve all profiles (role-restricted)
+- Retrieve a single profile (role-restricted)
+- Update profiles (role-restricted)
+- Delete profiles (role-restricted)
+- Role-based access control
 - Health check endpoint
+- OpenAPI specification
 
 ---
 
@@ -21,79 +24,64 @@ The microservice provides CRUD (Create, Read, Update, Delete) operations for man
 - Flask
 - pyodbc
 - Microsoft SQL Server
-- Docker
-- Postman (API testing)
-
----
-
-## Database
-The service connects to a dedicated Microsoft SQL Server database provided by the University of Plymouth.
-
-All database operations are implemented in Python using `pyodbc`, in line with the Coursework 2 guidance. Database credentials are not stored in the repository.
+- Docker / Docker Compose
+- Postman
 
 ---
 
 ## Authentication and Authorisation
-The microservice integrates with the Authenticator API provided as part of the coursework.
+The service integrates with the COMP2001 Authenticator API.
 
-User identity is validated at runtime and role-based access control is enforced:
-- **Admin** and **staff** users can manage all profiles
-- **Standard users** can only access and modify their own profile
+Role-based access control is enforced:
+- **Admin / Staff**: full access
+- **User**: access limited to own profile
 
-The following users are supported via the Authenticator API:
-- grace.hopper
-- ada.lovelace
-- tim.berners-lee
+Supported accounts:
+- `grace.hopper`
+- `ada.lovelace`
+- `tim.berners-lee`
 
----
 
-## Configuration (Environment Variables)
+All protected endpoints require the following header:
+```
+X-User: <username>
+```
 
-The service reads configuration values from environment variables:
+Example:
+```
+X-User: grace.hopper
+```
 
-- `DB_SERVER`
-- `DB_NAME`
-- `DB_USER`
-- `DB_PASSWORD`
-- `AUTH_API_URL`
-
-Sensitive credentials are not committed to source control.
 
 ---
 
-## API Documentation
+## Configuration
 
-The API is documented using OpenAPI.  
-A static OpenAPI specification is provided in `openapi.yaml`.
+Create a `.env` file with the following variables:
+
+```env
+DB_SERVER=dist-6-505.uopnet.plymouth.ac.uk
+DB_NAME=YOUR_DATABASE_NAME
+DB_USER=YOUR_USERNAME
+DB_PASSWORD=YOUR_PASSWORD
+AUTH_API_URL=https://web.socem.plymouth.ac.uk/COMP2001/auth/api/users
+```
 
 ---
 
 ## Running the Service (Docker)
 
 ### Prerequisites
-- Docker and Docker Compose installed
-- FortiClient VPN connected
-- Access to the University of Plymouth SQL Server
-
----
-
-### Configuration
-
-Create an environment file from the provided example:
-
-```bash
-cp .env.example .env
+- Docker and Docker Compose
+- VPN connection if required for SQL Server access
 
 
-DB_SERVER=dist-6-505.uopnet.plymouth.ac.uk
-DB_NAME=DATABASE_NAME
-DB_USER=YOUR_USERNAME
-DB_PASSWORD=YOUR_PASSWORD
-AUTH_API_URL=https://web.socem.plymouth.ac.uk/COMP2001/auth/api/users
-
-
+### Build and Run
+```
 docker compose up --build
+```
+
+The service will be available at:
+```
 http://localhost:8000
-GET http://localhost:8000/health
-X-User: <username>
-X-User: grace.hopper
+```
