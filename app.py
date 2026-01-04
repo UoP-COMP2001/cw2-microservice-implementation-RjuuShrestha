@@ -185,10 +185,11 @@ def my_role():
 # -----------------------------
 # New user requirement
 # -----------------------------
+
 @app.route("/users", methods=["POST"])
 def create_user():
     """
-    New user story: create profile with only a username.
+    New user story: create a profile row with only a username.
     - admin/staff: can create any user
     - user: can only create their own profile
     """
@@ -201,9 +202,13 @@ def create_user():
     if not username:
         return jsonify({"error": "Missing field: Username"}), 400
 
-    # Users can only create their own profile
+    # Role rule: users can only create themselves
     if user["role"] == "user" and username != user["username"]:
         return jsonify({"error": "Users can only create their own profile"}), 403
+
+    # Optional: if you want ONLY admin/staff/users (already guaranteed by authenticator_lookup)
+    if user["role"] not in ("admin", "staff", "user"):
+        return jsonify({"error": "Forbidden"}), 403
 
     # Validate target exists in Authenticator API
     auth_target = authenticator_lookup(username)
@@ -213,12 +218,10 @@ def create_user():
     cn = get_conn()
     cur = cn.cursor()
     try:
-        # Prevent duplicates
         cur.execute("SELECT 1 FROM CW2.Profile WHERE Username = ?;", username)
         if cur.fetchone():
             return jsonify({"error": "Profile already exists for this username"}), 409
 
-        # Username-only insert (other fields nullable)
         cur.execute("""
             INSERT INTO CW2.Profile (Username)
             OUTPUT INSERTED.ProfileID
@@ -314,14 +317,14 @@ def create_profile():
 
     data = request.get_json(silent=True) or {}
 
+    if user["role"] == "user":
+        return jsonify({"error": "Use /users to create your profile with username only"}), 403
+
     missing = [k for k in PROFILE_FIELDS if k not in data]
     if missing:
         return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
     username = (data.get("Username") or "").strip()
-
-    if user["role"] == "user" and username != user["username"]:
-        return jsonify({"error": "Users can only create their own profile"}), 403
 
     auth_target = authenticator_lookup(username)
     if not auth_target:
