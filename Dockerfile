@@ -39,4 +39,5 @@ COPY . .
 EXPOSE 8000
 
 # Run the application
-CMD ["python", "app.py"]
+CMD ["gunicorn", "-b", "0.0.0.0:8000", "app:app"]
+

@@ -5,11 +5,14 @@ info:
   version: "1.0.0"
 
 servers:
-  - url: http://localhost:8000
+  - url: "http://localhost:8000"
     description: Local development
 
 tags:
   - name: Health
+  - name: Meta
+  - name: Roles
+  - name: Users
   - name: Profiles
 
 paths:
@@ -27,10 +30,72 @@ paths:
               example:
                 status: ok
 
+  /openapi:
+    get:
+      tags: [Meta]
+      summary: OpenAPI hint endpoint (points to openapi.yaml in the repository)
+      parameters:
+        - $ref: "#/components/parameters/XUser"
+      responses:
+        "200":
+          description: Hint returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenApiHintResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /roles/me:
+    get:
+      tags: [Roles]
+      summary: Get my username and role
+      parameters:
+        - $ref: "#/components/parameters/XUser"
+      responses:
+        "200":
+          description: Role returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyRoleResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users:
+    post:
+      tags: [Users]
+      summary: Create a new user profile (new user requirement)
+      parameters:
+        - $ref: "#/components/parameters/XUser"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProfileCreate"
+      responses:
+        "201":
+          description: User profile created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfileCreatedResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
   /profiles:
     get:
       tags: [Profiles]
-      summary: Get all profiles (with optional activity fields from the view)
+      summary: Get all profiles (admin/staff only)
+      parameters:
+        - $ref: "#/components/parameters/XUser"
       responses:
         "200":
           description: List of profiles
@@ -40,22 +105,24 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Profile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
 
     post:
       tags: [Profiles]
       summary: Create a new profile
+      parameters:
+        - $ref: "#/components/parameters/XUser"
       requestBody:
         required: true
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/ProfileCreate"
-            example:
-              Username: "Test Person"
-              Email: "testperson@plymouth.ac.uk"
-              Location: "Plymouth"
-              PreferredActivity: "Walking"
-              DateOfBirth: "2000-01-31"
       responses:
         "201":
           description: Profile created
@@ -63,22 +130,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProfileCreatedResponse"
-              example:
-                message: "Profile created"
-                ProfileID: 9
         "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/ServerError"
 
-  /profiles/{id}:
+  /profiles/{profile_id}:
     get:
       tags: [Profiles]
       summary: Get a profile by ID
       parameters:
-        - name: id
+        - $ref: "#/components/parameters/XUser"
+        - name: profile_id
           in: path
           required: true
           schema:
@@ -90,18 +157,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Profile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
-          description: Profile not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
 
     put:
       tags: [Profiles]
-      summary: Update a profile (partial update supported)
+      summary: Update a profile (partial update)
       parameters:
-        - name: id
+        - $ref: "#/components/parameters/XUser"
+        - name: profile_id
           in: path
           required: true
           schema:
@@ -112,9 +182,6 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/ProfileUpdate"
-            example:
-              Location: "Bristol"
-              PreferredActivity: "Cycling"
       responses:
         "200":
           description: Profile updated
@@ -122,26 +189,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
-              example:
-                message: "Profile updated"
         "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
-          description: Profile not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
 
     delete:
       tags: [Profiles]
       summary: Delete a profile by ID
       parameters:
-        - name: id
+        - $ref: "#/components/parameters/XUser"
+        - name: profile_id
           in: path
           required: true
           schema:
@@ -149,14 +213,67 @@ paths:
       responses:
         "204":
           description: Profile deleted (no content)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
-          description: Profile not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/ServerError"
 
 components:
+  parameters:
+    XUser:
+      name: X-User
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Username validated via the Authenticator API
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid X-User header / Authenticator validation failed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: Unauthorized user
+    Forbidden:
+      description: User does not have permission for this operation
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: Forbidden
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: Profile not found
+    BadRequest:
+      description: Invalid input
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: Missing fields
+    ServerError:
+      description: Database/server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: Database error
+
   schemas:
     HealthResponse:
       type: object
@@ -164,6 +281,27 @@ components:
         status:
           type: string
       required: [status]
+
+    OpenApiHintResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        auth_header:
+          type: string
+        user:
+          type: object
+      required: [message, auth_header]
+
+    MyRoleResponse:
+      type: object
+      properties:
+        username:
+          type: string
+        role:
+          type: string
+          enum: [admin, staff, user]
+      required: [username, role]
 
     MessageResponse:
       type: object
@@ -184,47 +322,21 @@ components:
       properties:
         ProfileID:
           type: integer
-          example: 1
         Username:
           type: string
-          example: "Grace Hopper"
         Email:
           type: string
-          format: email
-          example: "grace@plymouth.ac.uk"
         Location:
           type: string
-          example: "Exeter"
         PreferredActivity:
           type: string
-          example: "Running"
-
-        # Fields that may appear from the vw_ProfileSummary view (can be null)
-        ActivityDate:
+        DateOfBirth:
           type: string
-          nullable: true
-          example: "Sun, 05 Jan 2025 00:00:00 GMT"
-        ActivityType:
-          type: string
-          nullable: true
-          example: "Trail Walk"
-        Distance:
-          type: number
-          nullable: true
-          example: 5.2
-        Duration:
-          type: integer
-          nullable: true
-          example: 90
+          format: date
 
     ProfileCreate:
       type: object
-      required:
-        - Username
-        - Email
-        - Location
-        - PreferredActivity
-        - DateOfBirth
+      required: [Username, Email, Location, PreferredActivity, DateOfBirth]
       properties:
         Username:
           type: string
@@ -238,7 +350,6 @@ components:
         DateOfBirth:
           type: string
           format: date
-          example: "2000-01-31"
 
     ProfileUpdate:
       type: object

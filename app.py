@@ -2,8 +2,17 @@ from flask import Flask, jsonify, request
 import os
 import pyodbc
 from datetime import date
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
+
+# -----------------------------
+# Config
+# -----------------------------
+AUTH_API_URL = os.environ.get("AUTH_API_URL", "https://web.socem.plymouth.ac.uk/COMP2001/auth/api/users")
 
 # -----------------------------
 # Database connection
@@ -30,7 +39,6 @@ def connection_string() -> str:
 def get_conn():
     return pyodbc.connect(connection_string())
 
-
 # -----------------------------
 # Helpers
 # -----------------------------
@@ -38,12 +46,65 @@ PROFILE_FIELDS = ["Username", "Email", "Location", "PreferredActivity", "DateOfB
 
 def validate_date_iso(value: str) -> bool:
     try:
-        # expects YYYY-MM-DD
         date.fromisoformat(value)
         return True
     except Exception:
         return False
 
+def get_request_username() -> str | None:
+    return request.headers.get("X-User")
+
+def authenticator_lookup(username: str) -> dict | None:
+    """
+    Validate user exists via Authenticator API.
+    Retrieve role if provided; otherwise assign deterministically.
+    """
+    try:
+        r = requests.get(f"{AUTH_API_URL}/{username}", timeout=5)
+        if r.status_code != 200:
+            return None
+
+        # Prefer JSON but be robust if content-type is weird
+        if r.headers.get("content-type", "").startswith("application/json"):
+            data = r.json()
+        else:
+            data = {"username": username}
+
+        role = data.get("role")
+        if not role:
+            roles = ["admin", "staff", "user"]
+            role = roles[hash(username) % len(roles)]
+
+        return {"username": data.get("username") or username, "role": role}
+    except requests.exceptions.RequestException:
+        return None
+
+def require_auth():
+    username = get_request_username()
+    if not username:
+        return None, (jsonify({"error": "Missing X-User header"}), 401)
+
+    user = authenticator_lookup(username)
+    if not user:
+        return None, (jsonify({"error": "Unauthorized user"}), 401)
+
+    return user, None
+
+def require_roles(user: dict, allowed_roles: list[str]):
+    if user.get("role") not in allowed_roles:
+        return (jsonify({"error": "Forbidden"}), 403)
+    return None
+
+def fetch_profile_owner(profile_id: int) -> str | None:
+    cn = get_conn()
+    cur = cn.cursor()
+    try:
+        cur.execute("SELECT Username FROM CW2.Profile WHERE ProfileID = ?;", profile_id)
+        row = cur.fetchone()
+        return row[0] if row else None
+    finally:
+        cur.close()
+        cn.close()
 
 # -----------------------------
 # Routes
@@ -52,13 +113,112 @@ def validate_date_iso(value: str) -> bool:
 def health():
     return jsonify({"status": "ok"}), 200
 
+@app.route("/openapi", methods=["GET"])
+def openapi_hint():
+    user, err = require_auth()
+    if err:
+        return err
 
-@app.route("/profiles", methods=["GET"])
-def get_profiles():
+    return jsonify({
+        "message": "See openapi.yaml in the repository.",
+        "auth_header": "X-User",
+        "user": user
+    }), 200
+
+@app.route("/roles/me", methods=["GET"])
+def my_role():
+    user, err = require_auth()
+    if err:
+        return err
+    return jsonify({"username": user["username"], "role": user["role"]}), 200
+
+# -----------------------------
+# New user requirement
+# -----------------------------
+@app.route("/users", methods=["POST"])
+def create_user():
+    """
+    Creates a new user profile (full row) so it works with NOT NULL DB constraints.
+    """
+    user, err = require_auth()
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+
+    missing = [k for k in PROFILE_FIELDS if k not in data]
+    if missing:
+        return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
+
+    username = data.get("Username")
+
+    # Standard users can only create their own profile
+    if user["role"] == "user" and username != user["username"]:
+        return jsonify({"error": "Users can only create their own profile"}), 403
+
+    # Validate against Authenticator API
+    auth_target = authenticator_lookup(username)
+    if not auth_target:
+        return jsonify({"error": "Username not found in Authenticator API"}), 400
+
+    # Reuse same insert as /profiles
+    return create_profile_internal(data, message="User created")
+
+def create_profile_internal(data: dict, message: str):
+    username = data.get("Username")
+    email = data.get("Email")
+    location = data.get("Location")
+    preferred_activity = data.get("PreferredActivity")
+    date_of_birth = data.get("DateOfBirth")
+
+    if not isinstance(username, str) or not username.strip():
+        return jsonify({"error": "Username must be a non-empty string"}), 400
+    if not isinstance(email, str) or not email.strip():
+        return jsonify({"error": "Email must be a non-empty string"}), 400
+    if not isinstance(location, str) or not location.strip():
+        return jsonify({"error": "Location must be a non-empty string"}), 400
+    if not isinstance(preferred_activity, str) or not preferred_activity.strip():
+        return jsonify({"error": "PreferredActivity must be a non-empty string"}), 400
+    if not isinstance(date_of_birth, str) or not validate_date_iso(date_of_birth):
+        return jsonify({"error": "DateOfBirth must be in YYYY-MM-DD format"}), 400
+
     cn = get_conn()
     cur = cn.cursor()
     try:
-        # CW2: CRUD implemented in Python using pyodbc
+        cur.execute("""
+            INSERT INTO CW2.Profile
+            (Username, Email, Location, PreferredActivity, DateOfBirth)
+            OUTPUT INSERTED.ProfileID
+            VALUES (?, ?, ?, ?, ?);
+        """, username, email, location, preferred_activity, date_of_birth)
+
+        row = cur.fetchone()
+        new_id = int(row[0]) if row else None
+        cn.commit()
+        return jsonify({"message": message, "ProfileID": new_id}), 201
+    except pyodbc.Error:
+        cn.rollback()
+        return jsonify({"error": "Database error while creating profile"}), 500
+    finally:
+        cur.close()
+        cn.close()
+
+# -----------------------------
+# Profiles CRUD (secured)
+# -----------------------------
+@app.route("/profiles", methods=["GET"])
+def get_profiles():
+    user, err = require_auth()
+    if err:
+        return err
+
+    deny = require_roles(user, ["admin", "staff"])
+    if deny:
+        return deny
+
+    cn = get_conn()
+    cur = cn.cursor()
+    try:
         cur.execute("""
             SELECT TOP 50
                 ProfileID, Username, Email, Location, PreferredActivity, DateOfBirth
@@ -73,9 +233,19 @@ def get_profiles():
         cur.close()
         cn.close()
 
-
 @app.route("/profiles/<int:profile_id>", methods=["GET"])
 def get_profile(profile_id: int):
+    user, err = require_auth()
+    if err:
+        return err
+
+    owner = fetch_profile_owner(profile_id)
+    if not owner:
+        return jsonify({"error": "Profile not found"}), 404
+
+    if user["role"] == "user" and owner != user["username"]:
+        return jsonify({"error": "Forbidden"}), 403
+
     cn = get_conn()
     cur = cn.cursor()
     try:
@@ -97,9 +267,12 @@ def get_profile(profile_id: int):
         cur.close()
         cn.close()
 
-
 @app.route("/profiles", methods=["POST"])
 def create_profile():
+    user, err = require_auth()
+    if err:
+        return err
+
     data = request.get_json(silent=True) or {}
 
     missing = [k for k in PROFILE_FIELDS if k not in data]
@@ -107,59 +280,36 @@ def create_profile():
         return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
     username = data.get("Username")
-    email = data.get("Email")
-    location = data.get("Location")
-    preferred_activity = data.get("PreferredActivity")
-    date_of_birth = data.get("DateOfBirth")
 
-    # Basic validation
-    if not isinstance(username, str) or not username.strip():
-        return jsonify({"error": "Username must be a non-empty string"}), 400
-    if not isinstance(email, str) or not email.strip():
-        return jsonify({"error": "Email must be a non-empty string"}), 400
-    if not isinstance(location, str) or not location.strip():
-        return jsonify({"error": "Location must be a non-empty string"}), 400
-    if not isinstance(preferred_activity, str) or not preferred_activity.strip():
-        return jsonify({"error": "PreferredActivity must be a non-empty string"}), 400
-    if not isinstance(date_of_birth, str) or not validate_date_iso(date_of_birth):
-        return jsonify({"error": "DateOfBirth must be in YYYY-MM-DD format"}), 400
+    if user["role"] == "user" and username != user["username"]:
+        return jsonify({"error": "Users can only create their own profile"}), 403
 
-    cn = get_conn()
-    cur = cn.cursor()
-    try:
-        # Insert directly (no stored procedure), return created ID
-        cur.execute("""
-            INSERT INTO CW2.Profile (Username, Email, Location, PreferredActivity, DateOfBirth)
-            OUTPUT INSERTED.ProfileID
-            VALUES (?, ?, ?, ?, ?);
-        """, username, email, location, preferred_activity, date_of_birth)
+    auth_target = authenticator_lookup(username)
+    if not auth_target:
+        return jsonify({"error": "Username not found in Authenticator API"}), 400
 
-        row = cur.fetchone()
-        new_id = int(row[0]) if row else None
-
-        cn.commit()
-        return jsonify({"message": "Profile created", "ProfileID": new_id}), 201
-    except pyodbc.Error:
-        cn.rollback()
-        # Keeps error generic to avoid leaking DB details
-        return jsonify({"error": "Database error while creating profile"}), 500
-    finally:
-        cur.close()
-        cn.close()
-
+    return create_profile_internal(data, message="Profile created")
 
 @app.route("/profiles/<int:profile_id>", methods=["PUT"])
 def update_profile(profile_id: int):
-    data = request.get_json(silent=True) or {}
+    user, err = require_auth()
+    if err:
+        return err
 
+    owner = fetch_profile_owner(profile_id)
+    if not owner:
+        return jsonify({"error": "Profile not found"}), 404
+
+    if user["role"] == "user" and owner != user["username"]:
+        return jsonify({"error": "Forbidden"}), 403
+
+    data = request.get_json(silent=True) or {}
     location = data.get("Location")
     preferred_activity = data.get("PreferredActivity")
 
-    # Partial update supported: at least one field
     if location is None and preferred_activity is None:
         return jsonify({"error": "At least one field must be provided"}), 400
 
-    # Optional validation
     if location is not None and (not isinstance(location, str) or not location.strip()):
         return jsonify({"error": "Location must be a non-empty string"}), 400
     if preferred_activity is not None and (not isinstance(preferred_activity, str) or not preferred_activity.strip()):
@@ -174,7 +324,6 @@ def update_profile(profile_id: int):
         if location is not None:
             fields.append("Location = ?")
             params.append(location)
-
         if preferred_activity is not None:
             fields.append("PreferredActivity = ?")
             params.append(preferred_activity)
@@ -197,9 +346,21 @@ def update_profile(profile_id: int):
         cur.close()
         cn.close()
 
-
 @app.route("/profiles/<int:profile_id>", methods=["DELETE"])
 def delete_profile(profile_id: int):
+    user, err = require_auth()
+    if err:
+        return err
+
+    owner = fetch_profile_owner(profile_id)
+    if not owner:
+        return jsonify({"error": "Profile not found"}), 404
+
+    if user["role"] == "staff":
+        return jsonify({"error": "Forbidden"}), 403
+    if user["role"] == "user" and owner != user["username"]:
+        return jsonify({"error": "Forbidden"}), 403
+
     cn = get_conn()
     cur = cn.cursor()
     try:
@@ -218,7 +379,5 @@ def delete_profile(profile_id: int):
         cur.close()
         cn.close()
 
-
 if __name__ == "__main__":
-    # Host/port aligned with OpenAPI server URL
     app.run(host="0.0.0.0", port=8000)
