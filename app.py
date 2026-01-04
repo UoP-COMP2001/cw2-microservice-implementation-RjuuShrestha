@@ -4,6 +4,8 @@ import pyodbc
 from datetime import date
 import requests
 from dotenv import load_dotenv
+import hashlib
+
 
 load_dotenv()
 
@@ -74,7 +76,9 @@ def authenticator_lookup(username: str) -> dict | None:
         role = data.get("role")
         if not role:
             roles = ["admin", "staff", "user"]
-            role = roles[hash(username) % len(roles)]
+            digest = hashlib.md5(username.encode()).hexdigest()
+            role = roles[int(digest, 16) % len(roles)]
+
 
         return {"username": data.get("username") or username, "role": role}
     except requests.exceptions.RequestException:
@@ -106,6 +110,49 @@ def fetch_profile_owner(profile_id: int) -> str | None:
     finally:
         cur.close()
         cn.close()
+
+def create_profile_internal(data: dict, message: str = "Profile created"):
+    """
+    Internal helper to insert a full profile from a request JSON dict.
+    Expects keys: Username, Email, Location, PreferredActivity, DateOfBirth
+    """
+    username = data["Username"].strip()
+    email = data["Email"].strip()
+    location = data["Location"].strip()
+    preferred_activity = data["PreferredActivity"].strip()
+    dob = data["DateOfBirth"].strip()
+
+    if not validate_date_iso(dob):
+        return jsonify({"error": "DateOfBirth must be ISO format YYYY-MM-DD"}), 400
+
+    cn = get_conn()
+    cur = cn.cursor()
+    try:
+        # prevent duplicate username profile
+        cur.execute("SELECT 1 FROM CW2.Profile WHERE Username = ?;", username)
+        if cur.fetchone():
+            return jsonify({"error": "Profile already exists for this username"}), 409
+
+        cur.execute("""
+            INSERT INTO CW2.Profile
+                (Username, Email, Location, PreferredActivity, DateOfBirth)
+            OUTPUT INSERTED.ProfileID
+            VALUES (?, ?, ?, ?, ?);
+        """, (username, email, location, preferred_activity, dob))
+
+        row = cur.fetchone()
+        new_id = int(row[0]) if row else None
+        cn.commit()
+
+        return jsonify({"message": message, "ProfileID": new_id}), 201
+
+    except pyodbc.Error:
+        cn.rollback()
+        return jsonify({"error": "Database error while creating profile"}), 500
+    finally:
+        cur.close()
+        cn.close()
+
 
 # -----------------------------
 # Routes
@@ -271,7 +318,7 @@ def create_profile():
     if missing:
         return jsonify({"error": f"Missing fields: {', '.join(missing)}"}), 400
 
-    username = data.get("Username")
+    username = (data.get("Username") or "").strip()
 
     if user["role"] == "user" and username != user["username"]:
         return jsonify({"error": "Users can only create their own profile"}), 403
