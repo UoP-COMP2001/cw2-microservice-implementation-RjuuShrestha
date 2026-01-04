@@ -58,29 +58,31 @@ def get_request_username() -> str | None:
     return request.headers.get("X-User")
 
 def authenticator_lookup(username: str) -> dict | None:
-    """
-    Validate user exists via Authenticator API.
-    Retrieve role if provided; otherwise assign deterministically.
-    """
     try:
         r = requests.get(f"{AUTH_API_URL}/{username}", timeout=5)
         if r.status_code != 200:
             return None
 
-        # Prefer JSON but be robust if content-type is weird
         if r.headers.get("content-type", "").startswith("application/json"):
             data = r.json()
         else:
             data = {"username": username}
 
-        role = data.get("role")
+        role = (data.get("role") or "").strip().lower()
+
+        if role not in ("admin", "staff", "user"):
+            role = ""
+
         if not role:
             roles = ["admin", "staff", "user"]
             digest = hashlib.md5(username.encode()).hexdigest()
             role = roles[int(digest, 16) % len(roles)]
 
+        return {
+            "username": data.get("username") or username,
+            "role": role
+        }
 
-        return {"username": data.get("username") or username, "role": role}
     except requests.exceptions.RequestException:
         return None
 
