@@ -6,8 +6,12 @@ import requests
 from dotenv import load_dotenv
 import hashlib
 
-
 load_dotenv()
+
+DB_SERVER = os.getenv("DB_SERVER")
+DB_NAME = os.getenv("DB_NAME")
+DB_USERNAME = os.getenv("DB_USERNAME")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
 
 app = Flask(__name__)
 
@@ -15,6 +19,7 @@ app = Flask(__name__)
 # Config
 # -----------------------------
 AUTH_API_URL = os.environ.get("AUTH_API_URL", "https://web.socem.plymouth.ac.uk/COMP2001/auth/api/users")
+LOCAL_AUTH_FALLBACK = os.environ.get("LOCAL_AUTH_FALLBACK", "true").lower() == "true"
 
 # -----------------------------
 # Database connection
@@ -30,12 +35,13 @@ def connection_string() -> str:
 
     return (
         "DRIVER={ODBC Driver 17 for SQL Server};"
-        f"SERVER={server},1433;"
-        f"DATABASE={database};"
-        f"UID={username};"
-        f"PWD={password};"
+        f"SERVER={DB_SERVER};"
+        f"DATABASE={DB_NAME};"
+        f"UID={DB_USERNAME};"
+        f"PWD={DB_PASSWORD};"
         "Encrypt=yes;"
         "TrustServerCertificate=yes;"
+        "Connection Timeout=30;"
     )
 
 def get_conn():
@@ -59,27 +65,28 @@ def get_request_username() -> str | None:
 
 def authenticator_lookup(username: str) -> dict | None:
     try:
-        r = requests.get(f"{AUTH_API_URL}/{username}", timeout=5)
+        r = requests.post(
+            AUTH_API_URL,
+            json={"username": username},
+            timeout=5
+        )
+
         if r.status_code != 200:
             return None
 
-        if r.headers.get("content-type", "").startswith("application/json"):
-            data = r.json()
-        else:
-            data = {"username": username}
+        data = r.json()
 
-        role = (data.get("role") or "").strip().lower()
+        # Auth API returns something like ["Verified", "False"]
+        if not data or data[0] != "Verified":
+            return None
 
-        if role not in ("admin", "staff", "user"):
-            role = ""
-
-        if not role:
-            roles = ["admin", "staff", "user"]
-            digest = hashlib.md5(username.encode()).hexdigest()
-            role = roles[int(digest, 16) % len(roles)]
+        # Role assignment
+        roles = ["admin", "staff", "user"]
+        digest = hashlib.md5(username.encode()).hexdigest()
+        role = roles[int(digest, 16) % len(roles)]
 
         return {
-            "username": data.get("username") or username,
+            "username": username,
             "role": role
         }
 
